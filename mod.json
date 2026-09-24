@@ -1,0 +1,107 @@
+{
+	"geode": "5.10.1",
+	"gd": {
+		"win": "2.2081"
+	},
+	"id": "ko1ss.gd-auto-clipper",
+	"name": "GD Auto Clipper",
+	"version": "v1.0.0",
+	"developer": "Ko1ss",
+	"description": "Automatically records, saves, and clips your Personal Bests, StartPos runs, and level completions directly through OBS Studio!",
+	
+	"repository": "https://github.com/Ko1ss/Geometry-Dash-Auto-Clipper",
+
+	"links": {
+		"homepage": "https://linktr.ee/Ko1ss"
+	},
+
+	"tags": [
+		"utility",
+		"enhancement"
+	],
+
+	"settings": {
+		"obs-port": {
+			"name": "OBS WebSocket Port",
+			"description": "Port configured in OBS Tools -> WebSocket Server Settings (Default: 4455)",
+			"type": "int",
+			"default": 4455,
+			"min": 1024,
+			"max": 65535
+		},
+		"obs-password": {
+			"name": "OBS WebSocket Password",
+			"description": "Password set in OBS WebSocket settings (leave empty if none)",
+			"type": "string",
+			"default": ""
+		},
+		"recording-mode": {
+			"name": "Recording Strategy",
+			"description": "Continuous: records continuously during play. Replay Buffer: saves the last N seconds on death.",
+			"type": "string",
+			"default": "Continuous Session",
+			"one-of": [
+				"Continuous Session",
+				"Replay Buffer (RAM)"
+			]
+		},
+		"auto-save-pbs": {
+			"name": "Auto-Save Full Run PBs",
+			"description": "Automatically saves clips when you achieve a new personal best from 0%.",
+			"type": "bool",
+			"default": true
+		},
+		"min-floor-percent": {
+			"name": "Minimum Floor %",
+			"description": "Always save runs that pass this percentage, even if they aren't new PBs.",
+			"type": "int",
+			"default": 15,
+			"min": 0,
+			"max": 100
+		},
+		"startpos-min-gain": {
+			"name": "StartPos Minimum Gain %",
+			"description": "Minimum percentage gained from a StartPos to trigger an automatic clip save.",
+			"type": "int",
+			"default": 5,
+			"min": 1,
+			"max": 100
+		},
+		"startpos-save-pbs": {
+			"name": "Save StartPos Records",
+			"description": "Automatically saves when you reach a new best percentage from that specific StartPos.",
+			"type": "bool",
+			"default": true
+		},
+		"padding-tail-sec": {
+			"name": "Post-Death Reaction Padding (Seconds)",
+			"description": "How many seconds to keep recording after dying or beating a level to capture your reaction and audio fadeout.",
+			"type": "float",
+			"default": 3.5,
+			"min": 1.0,
+			"max": 15.0
+		},
+		"padding-front-sec": {
+			"name": "Pre-Run Front Padding (Seconds)",
+			"description": "Seconds of padding to include before the run starts.",
+			"type": "float",
+			"default": 4.0,
+			"min": 0.0,
+			"max": 10.0
+		},
+		"allow-pause-recording": {
+			"name": "Allow Pause During Runs",
+			"description": "Keeps recording active while the game is paused (for nerve control / breathers).",
+			"type": "bool",
+			"default": true
+		},
+		"max-pause-duration-sec": {
+			"name": "Max Pause Duration (Seconds)",
+			"description": "If paused longer than this, the clip is aborted to prevent huge file sizes.",
+			"type": "int",
+			"default": 120,
+			"min": 10,
+			"max": 600
+		}
+	}
+}
