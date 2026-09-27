@@ -73,12 +73,13 @@ public:
         return m_connected ? "Connected to OBS WebSocket v5" : "Disconnected from OBS";
     }
 
+    // Mode A: Live Record
     void startRecord(std::function<void(bool success)> callback = nullptr) {
         if (!m_connected) {
             if (callback) callback(false);
             return;
         }
-        std::string request = "{\"op\":6,\"d\":{\"requestType\":\"StartRecord\",\"requestId\":\"gd_start_rec\"}}";
+        std::string request = R"({"op":6,"d":{"requestType":"StartRecord","requestId":"gd_start_rec"}})";
         sendWebSocketFrame(request);
         if (callback) callback(true);
     }
@@ -86,16 +87,11 @@ public:
     void stopRecord(std::function<void(const std::string& outputPath)> callback = nullptr) {
         if (!m_connected) return;
         m_onRecordStopped = callback;
-        std::string request = "{\"op\":6,\"d\":{\"requestType\":\"StopRecord\",\"requestId\":\"gd_stop_rec\"}}";
+        std::string request = R"({"op":6,"d":{"requestType":"StopRecord","requestId":"gd_stop_rec"}})";
         sendWebSocketFrame(request);
     }
 
-    void startReplayBuffer() {
-        if (!m_connected) return;
-        std::string request = "{\"op\":6,\"d\":{\"requestType\":\"StartReplayBuffer\",\"requestId\":\"gd_start_replay\"}}";
-        sendWebSocketFrame(request);
-    }
-
+    // Mode B: Replay Buffer
     void saveReplayBuffer(std::function<void(const std::string& clipPath)> callback = nullptr) {
         if (callback) {
             m_onReplaySaved = callback;
@@ -104,11 +100,13 @@ public:
         auto now = std::chrono::steady_clock::now();
         auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(now - m_lastReplaySaveTime).count();
         if (elapsedMs < 600) {
+            log::info("SaveReplayBuffer debounced (triggered {}ms ago)", elapsedMs);
             return;
         }
         m_lastReplaySaveTime = now;
 
         if (!m_connected) {
+            log::warn("OBS not connected yet! Queuing SaveReplayBuffer and connecting immediately...");
             m_pendingReplaySave = true;
             connectAsync();
             return;
@@ -118,8 +116,9 @@ public:
     }
 
     void sendSaveReplayBufferRequest() {
-        std::string request = "{\"op\":6,\"d\":{\"requestType\":\"SaveReplayBuffer\",\"requestId\":\"gd_replay_save\"}}";
+        std::string request = R"({"op":6,"d":{"requestType":"SaveReplayBuffer","requestId":"gd_replay_save"}})";
         sendWebSocketFrame(request);
+        log::info(">>> SaveReplayBuffer command transmitted to OBS WebSocket! <<<");
     }
 
 private:
@@ -167,7 +166,8 @@ private:
         }
         freeaddrinfo(res);
 
-        std::string handshake = "GET / HTTP/1.1\r\n";
+        std::string handshake = "";
+        handshake += "GET / HTTP/1.1\r\n";
         handshake += "Host: " + m_host + ":" + portStr + "\r\n";
         handshake += "Upgrade: websocket\r\n";
         handshake += "Connection: Upgrade\r\n";
@@ -187,11 +187,12 @@ private:
 
         log::info("WebSocket upgrade successful with OBS v5!");
 
-        std::string identify = "{\"op\":1,\"d\":{\"rpcVersion\":1,\"eventSubscriptions\":1023}}";
+        std::string identify = R"({"op":1,"d":{"rpcVersion":1,"eventSubscriptions":1023}})";
         sendWebSocketFrame(identify);
         m_connected = true;
 
         if (m_pendingReplaySave.exchange(false)) {
+            log::info("Transmitting queued SaveReplayBuffer to OBS WebSocket!");
             sendSaveReplayBufferRequest();
         }
 
@@ -237,6 +238,11 @@ private:
 
             uint8_t opcode = buffer[0] & 0x0F;
             if (opcode == 0x8) {
+                int closeCode = 1000;
+                if (bytes >= 4) {
+                    closeCode = (static_cast<uint8_t>(buffer[2]) << 8) | static_cast<uint8_t>(buffer[3]);
+                }
+                log::error("OBS WebSocket closed connection with code: {}", closeCode);
                 m_connected = false;
                 break;
             } else if (opcode == 0x1) {
@@ -251,9 +257,7 @@ private:
 
                     if (payload.find("OBS_WEBSOCKET_OUTPUT_STARTED") != std::string::npos) {
                         std::string path = extractJsonString(payload, "outputPath");
-                        if (!path.empty()) {
-                            log::info("[GD Auto Clipper] OBS recording started -> writing to: {}", path);
-                        }
+                        log::info("[GD Auto Clipper] OBS recording started -> writing to: {}", path);
                     } else if (payload.find("OBS_WEBSOCKET_OUTPUT_STOPPED") != std::string::npos || payload.find("gd_stop_rec") != std::string::npos) {
                         std::string path = extractJsonString(payload, "outputPath");
                         if (path.empty() || path == "null") {
@@ -269,9 +273,12 @@ private:
                         }
                     }
 
-                    if (payload.find("ReplayBufferSaved") != std::string::npos || payload.find("savedReplayPath") != std::string::npos) {
+                    if (payload.find("Output is not active") != std::string::npos || payload.find("not active") != std::string::npos) {
+                        log::error(">>> OBS REPLAY BUFFER IS NOT RUNNING! Click 'Start Replay Buffer' in OBS Studio! <<<");
+                    } else if (payload.find("ReplayBufferSaved") != std::string::npos || payload.find("savedReplayPath") != std::string::npos) {
                         std::string path = extractJsonString(payload, "savedReplayPath");
                         if (!path.empty() && path != "null") {
+                            log::info(">>> OBS REPLAY BUFFER SAVED TO DISK: {} <<<", path);
                             if (m_onReplaySaved) {
                                 auto cb = m_onReplaySaved;
                                 m_onReplaySaved = nullptr;
@@ -285,33 +292,28 @@ private:
     }
 
     std::string extractJsonString(const std::string& json, const std::string& key) {
-        std::string searchKey = "\"" + key + "\"";
+        std::string searchKey = std::string(1, '"') + key + '"';
         size_t pos = json.find(searchKey);
         if (pos == std::string::npos) return "";
 
         pos = json.find(':', pos);
         if (pos == std::string::npos) return "";
 
-        pos = json.find('\"', pos);
+        pos = json.find('"', pos);
         if (pos == std::string::npos) return "";
 
-        size_t end = json.find('\"', pos + 1);
+        size_t end = json.find('"', pos + 1);
         if (end == std::string::npos) return "";
 
         std::string raw = json.substr(pos + 1, end - (pos + 1));
         std::string clean = "";
         for (size_t i = 0; i < raw.size(); ++i) {
-            if (raw[i] == '\\' && (i + 1) < raw.size()) {
-                char next = raw[i + 1];
-                if (next == '\\') {
-                    clean.push_back('\\');
-                    ++i;
-                } else if (next == '/') {
-                    clean.push_back('/');
-                    ++i;
-                } else {
-                    clean.push_back(raw[i]);
-                }
+            if (raw[i] == '\\' && (i + 1) < raw.size() && raw[i + 1] == '\\') {
+                clean.push_back('\\');
+                ++i;
+            } else if (raw[i] == '\\' && (i + 1) < raw.size() && raw[i + 1] == '/') {
+                clean.push_back('/');
+                ++i;
             } else {
                 clean.push_back(raw[i]);
             }

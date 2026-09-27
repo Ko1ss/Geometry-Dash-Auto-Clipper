@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.0.1
+- Patched a bug that caused recordings to crop incorrectly.
+- Improved the smart clipping system.
+- Made the UI more coherent.
+
 ## v1.0.0
 - Initial release of **GD Auto Clipper**!
 - Added OBS WebSocket v5 integration with auto-reconnect.
